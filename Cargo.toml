@@ -1,0 +1,25 @@
+[package]
+name = "rust_particle_speed_test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hashbrown = "0.14.5"
+rand = "0.8.5"
+rayon = "1.10.0"
+
+[[bin]]
+name = "par"
+path = "main.rs"
+
+[[bin]]
+name = "parb"
+path = "main_b.rs"
+
+[[bin]]
+name = "single"
+path = "main_single.rs"
+
+[[bin]]
+name = "parc"
+path = "main_c.rs"
