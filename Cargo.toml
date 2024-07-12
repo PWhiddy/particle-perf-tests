@@ -23,3 +23,7 @@ path = "main_single.rs"
 [[bin]]
 name = "parc"
 path = "main_c.rs"
+
+[[bin]]
+name = "pard"
+path = "main_d.rs"
