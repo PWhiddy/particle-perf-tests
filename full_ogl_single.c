@@ -1,11 +1,11 @@
-#include <GL/glew.h>       // Use GLAD if preferred; this example uses GLEW
+#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 
 #define NUM_PARTICLES 100000
-#define SPEED 0.0004f  // Speed factor for particle motion
+#define SPEED 0.0004f
 
 #define WIDTH 1600
 #define HEIGHT 900
