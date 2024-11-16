@@ -14,7 +14,8 @@ UNAME := $(shell uname)
 
 ifeq ($(UNAME), Linux)
     # Linux specific settings
-    LIBS := -lGL -lGLEW -lglfw
+    LIBS := -lGL -lGLEW -lglfw -lrt -lm
+    CFLAGS += -D_POSIX_C_SOURCE=199309L
 endif
 
 ifeq ($(UNAME), Darwin)
