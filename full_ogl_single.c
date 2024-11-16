@@ -1,10 +1,15 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 
-#define NUM_PARTICLES 100000
+#define NUM_THREADS 10
+
+
+#define NUM_PARTICLES 400000
 #define SPEED 0.0004f
 
 #define WIDTH 1600
@@ -26,6 +31,15 @@ typedef struct {
     u_int16_t cur_count;
 } Bin;
 
+typedef struct {
+    int start_bx;
+    int end_bx;
+    int start_by;
+    int end_by;
+    Bin *bins;
+    Particle *particles;
+} ThreadData;
+
 float random_float() {
     return (float)rand() / RAND_MAX * 2.0f - 1.0f;
 }
@@ -42,7 +56,7 @@ void update_particles(Particle* particles, int start_a, int end_a, int start_b, 
             float dm = exp(250.0 * d);
             float fx = dx / dm;
             float fy = dy / dm;
-            float mag = 4.5;
+            float mag = 5.5;
 
             particles[i].velocity[0] += fx * mag;
             particles[i].velocity[1] += fy * mag;
@@ -65,7 +79,7 @@ void update_particles_self(Particle* particles, int start, int end) {
             float dm = exp(250.0 * d);
             float fx = dx / dm;
             float fy = dy / dm;
-            float mag = 4.5;
+            float mag = 5.5;
 
             particles[i].velocity[0] += fx * mag;
             particles[i].velocity[1] += fy * mag;
@@ -84,8 +98,8 @@ void update_particles_elementwise(Particle *particles) {
         particles[i].velocity[0] -= center_mag * particles[i].position[0];
         particles[i].velocity[1] -= center_mag * particles[i].position[1];
 
-        particles[i].velocity[0] *= 0.99;
-        particles[i].velocity[1] *= 0.99;
+        particles[i].velocity[0] *= 0.996;
+        particles[i].velocity[1] *= 0.996;
 
         particles[i].position[0] += particles[i].velocity[0];
         particles[i].position[1] += particles[i].velocity[1];
@@ -104,7 +118,70 @@ void print_bin(int idx, Bin bin) {
     );
 }
 
+// Thread function for parallel execution
+void *update_particles_binned_thread(void *arg) {
+    ThreadData *data = (ThreadData *)arg;
+    Bin *bins = data->bins;
+    Particle *particles = data->particles;
+
+    for (int by = data->start_by; by < data->end_by; by++) {
+        for (int bx = data->start_bx; bx < data->end_bx; bx++) {
+            Bin bin_a = bins[bx + by * GRID_WIDTH];
+            int pairs[10] = {-1, -1, 0, -1, 1, -1, -1, 0, 0, 0};
+            for (int i = 0; i < 5; i++) {
+                int xoff = pairs[i * 2 + 0];
+                int yoff = pairs[i * 2 + 1];
+                int other_x = bx + xoff;
+                int other_y = by + yoff;
+                if (other_x > 0 && other_x < GRID_WIDTH && other_y > 0 && other_y < GRID_HEIGHT) {
+                    if (xoff == 0 && yoff == 0) {
+                        // Self update
+                        update_particles_self(particles, bin_a.offset, bin_a.offset + bin_a.total_count);
+                    } else {
+                        Bin bin_b = bins[bx + xoff + (by + yoff) * GRID_WIDTH];
+                        update_particles(
+                            particles, 
+                            bin_a.offset, bin_a.offset + bin_a.total_count,
+                            bin_b.offset, bin_b.offset + bin_b.total_count
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    return NULL;
+}
+
+// Main function to manage pthreads
 void update_particles_binned(Bin *bins, Particle *particles) {
+    pthread_t threads[NUM_THREADS];
+    ThreadData thread_data[NUM_THREADS];
+
+    int chunk_by = GRID_HEIGHT / NUM_THREADS;
+    //int chunk_bx = GRID_WIDTH;// / NUM_THREADS;
+
+    // Create threads and assign work
+    for (int i = 0; i < NUM_THREADS; i++) {
+        thread_data[i].start_bx = 0; //(i % NUM_THREADS) * chunk_bx;
+        thread_data[i].end_bx = GRID_WIDTH; // (i == NUM_THREADS - 1) ? GRID_WIDTH : (i + 1) * chunk_bx;
+        thread_data[i].start_by = chunk_by * i; //(i % NUM_THREADS) * chunk_by;
+        thread_data[i].end_by = chunk_by * (i + 1); //(i == NUM_THREADS - 1) ? GRID_HEIGHT : (i + 1) * chunk_by;
+        thread_data[i].bins = bins;
+        thread_data[i].particles = particles;
+
+        pthread_create(&threads[i], NULL, update_particles_binned_thread, (void *)&thread_data[i]);
+    }
+
+    // Wait for all threads to finish
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+}
+
+/* 
+void update_particles_binned(Bin *bins, Particle *particles) {
+    #pragma omp parallel for
     for (int by = 0; by < GRID_HEIGHT; by++) {
         for (int bx = 0; bx < GRID_WIDTH; bx++) {
             Bin bin_a = bins[bx + by * GRID_WIDTH];
@@ -120,13 +197,6 @@ void update_particles_binned(Bin *bins, Particle *particles) {
                         update_particles_self(particles, bin_a.offset, bin_a.offset + bin_a.total_count);
                     } else {
                         Bin bin_b = bins[bx + xoff + (by + yoff) * GRID_WIDTH];
-                        /*
-                        u_int32_t a_count = bin_a.total_count;
-                        u_int32_t b_count = bin_b.total_count;
-                        if (a_count > 0 && b_count > 0) {
-                            printf("cross bin interaction with a: %d b: %d\n", a_count, b_count);
-                        }
-                        */
                         update_particles(
                             particles, 
                             bin_a.offset, bin_a.offset + bin_a.total_count,
@@ -138,6 +208,7 @@ void update_particles_binned(Bin *bins, Particle *particles) {
         }
     }
 }
+*/
 
 uint32_t position_to_bin_idx(float x, float y) {
     return ((uint32_t) (x / BIN_SIZE + 0.5 * GRID_WIDTH)) + 
@@ -174,6 +245,10 @@ void sort_into_bins(Bin *bins, Particle *particle_src, Particle *particle_dst) {
     }
 }
 
+double calculate_elapsed_time(struct timespec start, struct timespec end) {
+    return (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+}
+
 int main() {
     if (!glfwInit()) {
         fprintf(stderr, "Failed to initialize GLFW\n");
@@ -196,6 +271,8 @@ int main() {
         fprintf(stderr, "Failed to initialize GLEW\n");
         return -1;
     }
+
+    printf("initializing with %d particles\n", NUM_PARTICLES);
 
     Particle *particles = malloc(NUM_PARTICLES * sizeof(Particle));
     Particle *back_particles = malloc(NUM_PARTICLES * sizeof(Particle));
@@ -246,36 +323,67 @@ int main() {
     glEnable(GL_PROGRAM_POINT_SIZE); 
 
     float *particle_pos_data = malloc(NUM_PARTICLES * sizeof(float) * 2);
+    
+    struct timespec start, end;
+    double clear_bins_time = 0, update_bins_time = 0, swap_time = 0, sort_bins_time = 0;
+    double update_binned_time = 0, update_elementwise_time = 0, render_time = 0;
+    int frame_count = 0;
+    double sim_start_time = glfwGetTime();
 
     while (!glfwWindowShouldClose(window)) {
+        clock_gettime(CLOCK_MONOTONIC, &start);
 
-        glClear(GL_COLOR_BUFFER_BIT);
-
+        // Clear bins timing
+        clock_gettime(CLOCK_MONOTONIC, &end);
         clear_bins(bins);
+        clear_bins_time += calculate_elapsed_time(start, end);
 
+        // Update bins timing
+        clock_gettime(CLOCK_MONOTONIC, &start);
         update_bins(bins, particles);
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        update_bins_time += calculate_elapsed_time(start, end);
 
+        // Swap particles timing
+        clock_gettime(CLOCK_MONOTONIC, &start);
         Particle *temp = particles;
         particles = back_particles;
         back_particles = temp;
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        swap_time += calculate_elapsed_time(start, end);
 
+        // Sort into bins timing
+        clock_gettime(CLOCK_MONOTONIC, &start);
         sort_into_bins(bins, back_particles, particles);
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        sort_bins_time += calculate_elapsed_time(start, end);
 
-        //update_particles_self(particles, 0, NUM_PARTICLES);
-        //update_particles(particles, 0, NUM_PARTICLES-1, 1, NUM_PARTICLES);
+        // Update particles (binned) timing
+        clock_gettime(CLOCK_MONOTONIC, &start);
         update_particles_binned(bins, particles);
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        update_binned_time += calculate_elapsed_time(start, end);
 
+        // Update particles (element-wise) timing
+        clock_gettime(CLOCK_MONOTONIC, &start);
         update_particles_elementwise(particles);
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        update_elementwise_time += calculate_elapsed_time(start, end);
 
-        // copy particle pos into buffer
+        // Render timing
+        clock_gettime(CLOCK_MONOTONIC, &start);
+
         float ratio = (float) WIDTH / (float) HEIGHT;
         for (int i = 0; i < NUM_PARTICLES; i++) {
             particle_pos_data[i * 2 + 0] = 0.2 * particles[i].position[0];
             particle_pos_data[i * 2 + 1] = 0.2 * particles[i].position[1] * ratio;
         }
 
+        glClear(GL_COLOR_BUFFER_BIT);
+
+
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, NUM_PARTICLES * 2 * sizeof(float), particle_pos_data);
+        glBufferData(GL_ARRAY_BUFFER, NUM_PARTICLES * 2 * sizeof(float), particle_pos_data, GL_DYNAMIC_DRAW);
 
         glBindVertexArray(vao);
         glDrawArrays(GL_POINTS, 0, NUM_PARTICLES);
@@ -283,6 +391,28 @@ int main() {
         glfwSwapBuffers(window);
         glfwPollEvents();
 
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        render_time += calculate_elapsed_time(start, end);
+
+        frame_count++;
+        if (glfwGetTime() - sim_start_time >= 1.0) {
+            printf("Average times per stage (seconds):\n");
+            printf("Clear Bins: %f\n", clear_bins_time / frame_count);
+            printf("Update Bins: %f\n", update_bins_time / frame_count);
+            printf("Swap Particles: %f\n", swap_time / frame_count);
+            printf("Sort Into Bins: %f\n", sort_bins_time / frame_count);
+            printf("Update Particles (Binned): %f\n", update_binned_time / frame_count);
+            printf("Update Particles (Element-wise): %f\n", update_elementwise_time / frame_count);
+            printf("total sim time: %f\n", (clear_bins_time + swap_time + 
+                sort_bins_time + update_binned_time + update_elementwise_time) / frame_count);
+            printf("Render: %f\n", render_time / frame_count);
+            printf("-----------------------------\n");
+
+            // Reset counters
+            clear_bins_time = update_bins_time = swap_time = sort_bins_time = update_binned_time = update_elementwise_time = render_time = 0;
+            frame_count = 0;
+            sim_start_time = glfwGetTime();
+        }
     }
 
     glDeleteVertexArrays(1, &vao);
