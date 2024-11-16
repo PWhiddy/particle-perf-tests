@@ -27,8 +27,8 @@ typedef struct {
 
 typedef struct {
     uint32_t offset;
-    u_int16_t total_count;
-    u_int16_t cur_count;
+    uint16_t total_count;
+    uint16_t cur_count;
 } Bin;
 
 typedef struct {
