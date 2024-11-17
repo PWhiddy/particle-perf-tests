@@ -20,6 +20,8 @@
 #define GRID_HEIGHT 500
 // #define MAX_PARTICLES_PER_BIN 256
 
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
 typedef struct {
     float position[2];
     float velocity[2];
@@ -94,12 +96,12 @@ void update_particles_elementwise(Particle *particles) {
     // Update particle positions based on velocity
     for (int i = 0; i < NUM_PARTICLES; i++) {
         
-        float center_mag = 0.00002;
+        float center_mag = 0.000005;
         particles[i].velocity[0] -= center_mag * particles[i].position[0];
         particles[i].velocity[1] -= center_mag * particles[i].position[1];
 
-        particles[i].velocity[0] *= 0.996;
-        particles[i].velocity[1] *= 0.996;
+        particles[i].velocity[0] *= 0.99;
+        particles[i].velocity[1] *= 0.99;
 
         particles[i].position[0] += particles[i].velocity[0];
         particles[i].position[1] += particles[i].velocity[1];
@@ -222,16 +224,19 @@ void clear_bins(Bin *bins) {
 }
 
 void update_bins(Bin *bins, Particle *particles) {
+    //uint32_t max_bin_size = 0;
     for (int i = 0; i < NUM_PARTICLES; i++) {
         uint32_t bin_idx = position_to_bin_idx(particles[i].position[0], particles[i].position[1]);
         //if (bin_idx != 0) {
         //    printf("bin idx: %d \n", bin_idx);
         //}
         bins[bin_idx].total_count += 1;
+        //max_bin_size = max(max_bin_size, bins[bin_idx].total_count);
     }
     for (int i = 1; i < GRID_HEIGHT * GRID_WIDTH; i++) {
         bins[i].offset = bins[i-1].total_count + bins[i-1].offset;
     }
+    //printf("max bin size: %d\n", max_bin_size);
 }
 
 void sort_into_bins(Bin *bins, Particle *particle_src, Particle *particle_dst) {
@@ -301,7 +306,7 @@ int main() {
 
     // Load and compile shaders
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    const char *vertexSource = "#version 330 core\nlayout(location = 0) in vec2 position;\nvoid main() { gl_PointSize = 3.0; gl_Position = vec4(position, 0.0, 1.0); }";
+    const char *vertexSource = "#version 330 core\nlayout(location = 0) in vec2 position;\nvoid main() { gl_PointSize = 1.5; gl_Position = vec4(position, 0.0, 1.0); }";
     glShaderSource(vertexShader, 1, &vertexSource, NULL);
     glCompileShader(vertexShader);
 
