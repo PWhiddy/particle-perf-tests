@@ -66,7 +66,6 @@ inline void pair_interaction(Particle *pa, Particle *pb) {
 }
 
 void update_particles(Particle *particles, int start_a, int end_a, int start_b, int end_b) {
-
     for (int i = start_a; i < end_a; i++) {
         for (int j = start_b; j < end_b; j++) {
             pair_interaction(particles+i, particles+j);
@@ -74,8 +73,7 @@ void update_particles(Particle *particles, int start_a, int end_a, int start_b, 
     }
 }
 
-void update_particles_self(Particle* particles, int start, int end) {
-
+void update_particles_self(Particle *particles, int start, int end) {
     for (int i = start; i < end - 1; i++) {
         for (int j = i + 1; j < end; j++) {
             pair_interaction(particles+i, particles+j);
@@ -83,9 +81,11 @@ void update_particles_self(Particle* particles, int start, int end) {
     }
 }
 
-void update_particles_elementwise(Particle *particles) {
+void update_particles_elementwise(void *arg) {
+    ThreadData *data = (ThreadData *)arg;
+    Particle *particles = data->particles;
     // Update particle positions based on velocity
-    for (int i = 0; i < NUM_PARTICLES; i++) {
+    for (int i = data->start_bx; i < data->end_bx; i++) {
         
         float center_mag = 0.000003;
         particles[i].velocity[0] -= center_mag * particles[i].position[0];
@@ -116,47 +116,73 @@ void update_particles_binned_thread(void *arg) {
     ThreadData *data = (ThreadData *)arg;
     Bin *bins = data->bins;
     Particle *particles = data->particles;
-
-    for (int by = data->start_by; by < data->end_by; by++) {
-        for (int bx = data->start_bx; bx < data->end_bx; bx++) {
-            Bin bin_a = bins[bx + by * GRID_WIDTH];
-            int pairs[10] = {-1, -1, 0, -1, 1, -1, -1, 0, 0, 0};
-            for (int i = 0; i < 5; i++) {
-                int xoff = pairs[i * 2 + 0];
-                int yoff = pairs[i * 2 + 1];
-                int other_x = bx + xoff;
-                int other_y = by + yoff;
-                if (other_x > 0 && other_x < GRID_WIDTH && other_y > 0 && other_y < GRID_HEIGHT) {
-                    if (xoff == 0 && yoff == 0) {
-                        // Self update
-                        update_particles_self(particles, bin_a.offset, bin_a.offset + bin_a.total_count);
-                    } else {
-                        Bin bin_b = bins[bx + xoff + (by + yoff) * GRID_WIDTH];
-                        update_particles(
-                            particles, 
-                            bin_a.offset, bin_a.offset + bin_a.total_count,
-                            bin_b.offset, bin_b.offset + bin_b.total_count
-                        );
+    int inner_dim = 1;
+    for (int by = data->start_by; by < data->end_by; by += inner_dim) {
+        for (int bx = data->start_bx; bx < data->end_bx; bx += inner_dim) {
+            for (int inner_by = by; inner_by < by + inner_dim; inner_by++) {
+                for (int inner_bx = bx; inner_bx < bx + inner_dim; inner_bx++) {
+                    Bin bin_a = bins[inner_bx + inner_by * GRID_WIDTH];
+                    int pairs[10] = {-1, -1, 0, -1, 1, -1, -1, 0, 0, 0};
+                    for (int i = 0; i < 5; i++) {
+                        int xoff = pairs[i * 2 + 0];
+                        int yoff = pairs[i * 2 + 1];
+                        int other_x = inner_bx + xoff;
+                        int other_y = inner_by + yoff;
+                        if (other_x > 0 && other_x < GRID_WIDTH && other_y > 0 && other_y < GRID_HEIGHT) {
+                            if (xoff == 0 && yoff == 0) {
+                                // Self update
+                                update_particles_self(particles, bin_a.offset, bin_a.offset + bin_a.total_count);
+                            } else {
+                                Bin bin_b = bins[inner_bx + xoff + (inner_by + yoff) * GRID_WIDTH];
+                                update_particles(
+                                    particles, 
+                                    bin_a.offset, bin_a.offset + bin_a.total_count,
+                                    bin_b.offset, bin_b.offset + bin_b.total_count
+                                );
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
 
+// Main function to manage pthreads
+void update_elementwise_par(tpool_t *tm, Bin *bins, Particle *particles) {
+
+    int num_work_items = NUM_THREADS * 8;
+    int rows_per_work_item = NUM_PARTICLES / num_work_items;
+
+    ThreadData *thread_data = calloc(num_work_items, sizeof(ThreadData));
+    for (int i = 0; i < num_work_items; i++) {
+        thread_data[i].start_bx = rows_per_work_item * i;
+        thread_data[i].end_bx = rows_per_work_item * (i + 1);
+        thread_data[i].bins = bins;
+        thread_data[i].particles = particles;
+        tpool_add_work(tm, update_particles_elementwise, thread_data+i);
+    }
+
+    tpool_wait(tm);
+
+    free(thread_data);
 }
 
 // Main function to manage pthreads
 void update_particles_binned(tpool_t *tm, Bin *bins, Particle *particles) {
 
     int num_work_items = NUM_THREADS * 8;
-    int rows_per_work_item = GRID_HEIGHT / num_work_items;
+    int sqrt_work_items = 8; // hardcoded for now!!
+    int rows_per_work_item = GRID_HEIGHT / sqrt_work_items;//num_work_items;
+    int cols_per_work_item = GRID_WIDTH / sqrt_work_items;//num_work_items;
 
     ThreadData *thread_data = calloc(num_work_items, sizeof(ThreadData));
     for (int i = 0; i < num_work_items; i++) {
-        thread_data[i].start_bx = 0;
-        thread_data[i].end_bx = GRID_WIDTH;
-        thread_data[i].start_by = rows_per_work_item * i;
-        thread_data[i].end_by = rows_per_work_item * (i + 1);
+        int j = i / sqrt_work_items;
+        thread_data[i].start_bx = cols_per_work_item * (i % sqrt_work_items);
+        thread_data[i].end_bx = cols_per_work_item * ((i % sqrt_work_items) + 1);
+        thread_data[i].start_by = rows_per_work_item * j;
+        thread_data[i].end_by = rows_per_work_item * (j + 1);
         thread_data[i].bins = bins;
         thread_data[i].particles = particles;
         tpool_add_work(tm, update_particles_binned_thread, thread_data+i);
@@ -327,7 +353,7 @@ int main() {
 
         // Update particles (element-wise) timing
         clock_gettime(CLOCK_MONOTONIC, &start);
-        update_particles_elementwise(particles);
+        update_elementwise_par(tm, bins, particles);
         clock_gettime(CLOCK_MONOTONIC, &end);
         update_elementwise_time += calculate_elapsed_time(start, end);
 
