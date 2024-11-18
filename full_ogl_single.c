@@ -10,7 +10,6 @@
 
 #define NUM_THREADS 8
 
-
 #define NUM_PARTICLES 512 * 780//1000
 #define SPEED 0.0004f
 
@@ -154,46 +153,20 @@ void update_particles_binned_thread(void *arg) {
         }
     }
 
-    //return NULL;
 }
 
 // Main function to manage pthreads
 void update_particles_binned(tpool_t *tm, Bin *bins, Particle *particles) {
-    /*
-    pthread_t threads[NUM_THREADS];
-    ThreadData thread_data[NUM_THREADS];
-
-    int chunk_by = GRID_HEIGHT / NUM_THREADS;
-    //int chunk_bx = GRID_WIDTH;// / NUM_THREADS;
-
-    // Create threads and assign work
-    for (int i = 0; i < NUM_THREADS; i++) {
-        thread_data[i].start_bx = 0; //(i % NUM_THREADS) * chunk_bx;
-        thread_data[i].end_bx = GRID_WIDTH; // (i == NUM_THREADS - 1) ? GRID_WIDTH : (i + 1) * chunk_bx;
-        thread_data[i].start_by = chunk_by * i; //(i % NUM_THREADS) * chunk_by;
-        thread_data[i].end_by = chunk_by * (i + 1); //(i == NUM_THREADS - 1) ? GRID_HEIGHT : (i + 1) * chunk_by;
-        thread_data[i].bins = bins;
-        thread_data[i].particles = particles;
-
-        pthread_create(&threads[i], NULL, update_particles_binned_thread, (void *)&thread_data[i]);
-    }
-
-    // Wait for all threads to finish
-    for (int i = 0; i < NUM_THREADS; i++) {
-        pthread_join(threads[i], NULL);
-    }
-*/
-    //////////
 
     int num_work_items = NUM_THREADS * 8;
     int rows_per_work_item = GRID_HEIGHT / num_work_items;
 
     ThreadData *thread_data = calloc(num_work_items, sizeof(ThreadData));
     for (int i = 0; i < num_work_items; i++) {
-        thread_data[i].start_bx = 0; //(i % NUM_THREADS) * chunk_bx;
-        thread_data[i].end_bx = GRID_WIDTH; // (i == NUM_THREADS - 1) ? GRID_WIDTH : (i + 1) * chunk_bx;
-        thread_data[i].start_by = rows_per_work_item * i; //(i % NUM_THREADS) * chunk_by;
-        thread_data[i].end_by = rows_per_work_item * (i + 1); //(i == NUM_THREADS - 1) ? GRID_HEIGHT : (i + 1) * chunk_by;
+        thread_data[i].start_bx = 0;
+        thread_data[i].end_bx = GRID_WIDTH;
+        thread_data[i].start_by = rows_per_work_item * i;
+        thread_data[i].end_by = rows_per_work_item * (i + 1);
         thread_data[i].bins = bins;
         thread_data[i].particles = particles;
         tpool_add_work(tm, update_particles_binned_thread, thread_data+i);
@@ -202,21 +175,6 @@ void update_particles_binned(tpool_t *tm, Bin *bins, Particle *particles) {
     tpool_wait(tm);
 
     free(thread_data);
-
-    /*
-    vals = calloc(num_items, sizeof(*vals));
-
-    for (i=0; i<num_items; i++) {
-        vals[i] = i;
-        tpool_add_work(tm, worker, vals+i);
-    }
-
-    tpool_wait(tm);
-
-    for (i=0; i<num_items; i++) {
-        printf("%d\n", vals[i]);
-    }
-    */
 }
 
 uint32_t position_to_bin_idx(float x, float y) {
