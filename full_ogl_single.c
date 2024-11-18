@@ -6,18 +6,20 @@
 #include <math.h>
 #include <time.h>
 
-#define NUM_THREADS 10
+#include "tpool.h"
+
+#define NUM_THREADS 8
 
 
-#define NUM_PARTICLES 400000
+#define NUM_PARTICLES 512 * 780//1000
 #define SPEED 0.0004f
 
 #define WIDTH 1600
 #define HEIGHT 900
 
 #define BIN_SIZE 0.04
-#define GRID_WIDTH 500
-#define GRID_HEIGHT 500
+#define GRID_WIDTH 512
+#define GRID_HEIGHT 512
 // #define MAX_PARTICLES_PER_BIN 256
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -121,7 +123,7 @@ void print_bin(int idx, Bin bin) {
 }
 
 // Thread function for parallel execution
-void *update_particles_binned_thread(void *arg) {
+void update_particles_binned_thread(void *arg) {
     ThreadData *data = (ThreadData *)arg;
     Bin *bins = data->bins;
     Particle *particles = data->particles;
@@ -152,11 +154,12 @@ void *update_particles_binned_thread(void *arg) {
         }
     }
 
-    return NULL;
+    //return NULL;
 }
 
 // Main function to manage pthreads
-void update_particles_binned(Bin *bins, Particle *particles) {
+void update_particles_binned(tpool_t *tm, Bin *bins, Particle *particles) {
+    /*
     pthread_t threads[NUM_THREADS];
     ThreadData thread_data[NUM_THREADS];
 
@@ -179,38 +182,42 @@ void update_particles_binned(Bin *bins, Particle *particles) {
     for (int i = 0; i < NUM_THREADS; i++) {
         pthread_join(threads[i], NULL);
     }
-}
-
-/* 
-void update_particles_binned(Bin *bins, Particle *particles) {
-    #pragma omp parallel for
-    for (int by = 0; by < GRID_HEIGHT; by++) {
-        for (int bx = 0; bx < GRID_WIDTH; bx++) {
-            Bin bin_a = bins[bx + by * GRID_WIDTH];
-            int pairs[10] = {-1, -1, 0, -1, 1, -1, -1, 0, 0, 0};
-            for (int i = 0; i < 5; i++) {
-                int xoff = pairs[i * 2 + 0];
-                int yoff = pairs[i * 2 + 1];
-                int other_x = bx + xoff;
-                int other_y = by + yoff;
-                if (other_x > 0 && other_x < GRID_WIDTH && other_y > 0 && other_y < GRID_HEIGHT) {
-                    if (xoff == 0 && yoff == 0) {
-                        //print_bin(bx + by * GRID_WIDTH, bin_a);
-                        update_particles_self(particles, bin_a.offset, bin_a.offset + bin_a.total_count);
-                    } else {
-                        Bin bin_b = bins[bx + xoff + (by + yoff) * GRID_WIDTH];
-                        update_particles(
-                            particles, 
-                            bin_a.offset, bin_a.offset + bin_a.total_count,
-                            bin_b.offset, bin_b.offset + bin_b.total_count
-                        );
-                    }
-                }
-            }
-        }
-    }
-}
 */
+    //////////
+
+    int num_work_items = NUM_THREADS * 8;
+    int rows_per_work_item = GRID_HEIGHT / num_work_items;
+
+    ThreadData *thread_data = calloc(num_work_items, sizeof(ThreadData));
+    for (int i = 0; i < num_work_items; i++) {
+        thread_data[i].start_bx = 0; //(i % NUM_THREADS) * chunk_bx;
+        thread_data[i].end_bx = GRID_WIDTH; // (i == NUM_THREADS - 1) ? GRID_WIDTH : (i + 1) * chunk_bx;
+        thread_data[i].start_by = rows_per_work_item * i; //(i % NUM_THREADS) * chunk_by;
+        thread_data[i].end_by = rows_per_work_item * (i + 1); //(i == NUM_THREADS - 1) ? GRID_HEIGHT : (i + 1) * chunk_by;
+        thread_data[i].bins = bins;
+        thread_data[i].particles = particles;
+        tpool_add_work(tm, update_particles_binned_thread, thread_data+i);
+    }
+
+    tpool_wait(tm);
+
+    free(thread_data);
+
+    /*
+    vals = calloc(num_items, sizeof(*vals));
+
+    for (i=0; i<num_items; i++) {
+        vals[i] = i;
+        tpool_add_work(tm, worker, vals+i);
+    }
+
+    tpool_wait(tm);
+
+    for (i=0; i<num_items; i++) {
+        printf("%d\n", vals[i]);
+    }
+    */
+}
 
 uint32_t position_to_bin_idx(float x, float y) {
     return ((uint32_t) (x / BIN_SIZE + 0.5 * GRID_WIDTH)) + 
@@ -279,10 +286,10 @@ int main() {
 
     printf("initializing with %d particles\n", NUM_PARTICLES);
 
-    Particle *particles = malloc(NUM_PARTICLES * sizeof(Particle));
-    Particle *back_particles = malloc(NUM_PARTICLES * sizeof(Particle));
+    Particle *particles = calloc(NUM_PARTICLES, sizeof(Particle));
+    Particle *back_particles = calloc(NUM_PARTICLES, sizeof(Particle));
 
-    Bin *bins = malloc(GRID_WIDTH * GRID_HEIGHT * sizeof(Bin));
+    Bin *bins = calloc(GRID_WIDTH * GRID_HEIGHT, sizeof(Bin));
 
     float size_sq = sqrt((float) NUM_PARTICLES);
     int size_sq_i = (int) size_sq;
@@ -327,13 +334,15 @@ int main() {
 
     glEnable(GL_PROGRAM_POINT_SIZE); 
 
-    float *particle_pos_data = malloc(NUM_PARTICLES * sizeof(float) * 2);
+    float *particle_pos_data = calloc(NUM_PARTICLES, sizeof(float) * 2);
     
     struct timespec start, end;
     double clear_bins_time = 0, update_bins_time = 0, swap_time = 0, sort_bins_time = 0;
     double update_binned_time = 0, update_elementwise_time = 0, render_time = 0;
     int frame_count = 0;
     double sim_start_time = glfwGetTime();
+
+    tpool_t *tm   = tpool_create(NUM_THREADS);
 
     while (!glfwWindowShouldClose(window)) {
         clock_gettime(CLOCK_MONOTONIC, &start);
@@ -365,7 +374,7 @@ int main() {
 
         // Update particles (binned) timing
         clock_gettime(CLOCK_MONOTONIC, &start);
-        update_particles_binned(bins, particles);
+        update_particles_binned(tm, bins, particles);
         clock_gettime(CLOCK_MONOTONIC, &end);
         update_binned_time += calculate_elapsed_time(start, end);
 
@@ -426,6 +435,7 @@ int main() {
     free(particles);
     free(bins);
     free(back_particles);
+    tpool_destroy(tm);
     glfwTerminate();
 
     return 0;

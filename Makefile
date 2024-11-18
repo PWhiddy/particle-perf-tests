@@ -5,8 +5,8 @@ LDFLAGS :=
 LIBS := -lGL -lGLEW -lglfw
 
 # Source and output
-SRC := full_ogl_single.c
-OBJ := full_ogl_single.o
+SRC := tpool.c full_ogl_single.c
+OBJ := tpool.o full_ogl_single.o
 TARGET := full_ogl_single
 
 # Detect platform
