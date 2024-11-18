@@ -52,11 +52,11 @@ inline void pair_interaction(Particle *pa, Particle *pb) {
     float dy = pa->position[1] - pb->position[1];
     float dsq = dx * dx + dy * dy;
     float d = sqrt(dsq);
-    //float dm = d * d * d + 0.01;
-    float dm = exp(250.0 * d);
-    float fx = dx / dm;
-    float fy = dy / dm;
-    float mag = 5.5;
+    float nd = d*50.0;
+    float m = fmax(1.0 - nd*nd, 0.0);
+    float fx = (dx / d) * m;
+    float fy = (dy / d) * m;
+    float mag = 0.005;
 
     pa->velocity[0] += fx * mag;
     pa->velocity[1] += fy * mag;
