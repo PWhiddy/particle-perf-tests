@@ -10,15 +10,15 @@
 
 #define NUM_THREADS 8
 
-#define NUM_PARTICLES 512 * 780//1000
+#define NUM_PARTICLES 512 * 2048//1000
 #define SPEED 0.0004f
 
 #define WIDTH 1600
 #define HEIGHT 900
 
 #define BIN_SIZE 0.04
-#define GRID_WIDTH 512
-#define GRID_HEIGHT 512
+#define GRID_WIDTH 512*4
+#define GRID_HEIGHT 512*4
 // #define MAX_PARTICLES_PER_BIN 256
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -52,7 +52,7 @@ inline void pair_interaction(Particle *pa, Particle *pb) {
     float dy = pa->position[1] - pb->position[1];
     float dsq = dx * dx + dy * dy;
     float d = sqrt(dsq);
-    float nd = d*50.0;
+    float nd = d*40.0;
     float m = fmax(1.0 - nd*nd, 0.0);
     float fx = (dx / d) * m;
     float fy = (dy / d) * m;
@@ -87,7 +87,7 @@ void update_particles_elementwise(Particle *particles) {
     // Update particle positions based on velocity
     for (int i = 0; i < NUM_PARTICLES; i++) {
         
-        float center_mag = 0.000005;
+        float center_mag = 0.000003;
         particles[i].velocity[0] -= center_mag * particles[i].position[0];
         particles[i].velocity[1] -= center_mag * particles[i].position[1];
 
@@ -242,8 +242,8 @@ int main() {
     float size_sq = sqrt((float) NUM_PARTICLES);
     int size_sq_i = (int) size_sq;
     for (int i = 0; i < NUM_PARTICLES; i++) {
-        particles[i].position[0] = 10.0 * (((float) (i % size_sq_i)) / size_sq - 0.5);//random_float();
-        particles[i].position[1] = 10.0 * (((float) i) / (size_sq * size_sq) - 0.5);//random_float();
+        particles[i].position[0] = 40.0 * (((float) (i % size_sq_i)) / size_sq - 0.5);//random_float();
+        particles[i].position[1] = 40.0 * (((float) i) / (size_sq * size_sq) - 0.5);//random_float();
         particles[i].velocity[0] = random_float() * SPEED;
         particles[i].velocity[1] = random_float() * SPEED;
     }
@@ -294,10 +294,9 @@ int main() {
 
     while (!glfwWindowShouldClose(window)) {
         clock_gettime(CLOCK_MONOTONIC, &start);
-
+        clear_bins(bins);
         // Clear bins timing
         clock_gettime(CLOCK_MONOTONIC, &end);
-        clear_bins(bins);
         clear_bins_time += calculate_elapsed_time(start, end);
 
         // Update bins timing
@@ -359,15 +358,15 @@ int main() {
         frame_count++;
         if (glfwGetTime() - sim_start_time >= 1.0) {
             printf("Average times per stage (seconds):\n");
-            printf("Clear Bins: %f\n", clear_bins_time / frame_count);
-            printf("Update Bins: %f\n", update_bins_time / frame_count);
-            printf("Swap Particles: %f\n", swap_time / frame_count);
-            printf("Sort Into Bins: %f\n", sort_bins_time / frame_count);
-            printf("Update Particles (Binned): %f\n", update_binned_time / frame_count);
-            printf("Update Particles (Element-wise): %f\n", update_elementwise_time / frame_count);
-            printf("total sim time: %f\n", (clear_bins_time + swap_time + 
+            printf("Clear Bins: %f ms\n", 1000.0 * clear_bins_time / frame_count);
+            printf("Update Bins: %f ms\n", 1000.0 * update_bins_time / frame_count);
+            printf("Swap Particles: %f ms\n", 1000.0 * swap_time / frame_count);
+            printf("Sort Into Bins: %f ms\n", 1000.0 * sort_bins_time / frame_count);
+            printf("Update Particles (Binned): %f ms\n", 1000.0 * update_binned_time / frame_count);
+            printf("Update Particles (Element-wise): %f ms\n", 1000.0 * update_elementwise_time / frame_count);
+            printf("total sim time: %f ms\n", 1000.0 * (clear_bins_time + swap_time + 
                 sort_bins_time + update_binned_time + update_elementwise_time) / frame_count);
-            printf("Render: %f\n", render_time / frame_count);
+            printf("Render: %f ms\n", 1000.0 * render_time / frame_count);
             printf("-----------------------------\n");
 
             // Reset counters
