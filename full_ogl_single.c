@@ -17,8 +17,8 @@
 #define HEIGHT 900
 
 #define BIN_SIZE 0.04
-#define GRID_WIDTH 512*4
-#define GRID_HEIGHT 512*4
+#define GRID_WIDTH 512*2
+#define GRID_HEIGHT 512*2
 // #define MAX_PARTICLES_PER_BIN 256
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -217,7 +217,7 @@ void update_bins(Bin *bins, Particle *particles) {
     for (int i = 1; i < GRID_HEIGHT * GRID_WIDTH; i++) {
         bins[i].offset = bins[i-1].total_count + bins[i-1].offset;
     }
-    //printf("max bin size: %d\n", max_bin_size);
+    //printf("max bin size: %d", max_bin_size);
 }
 
 void sort_into_bins(Bin *bins, Particle *particle_src, Particle *particle_dst) {
