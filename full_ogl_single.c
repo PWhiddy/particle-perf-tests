@@ -47,25 +47,29 @@ float random_float() {
     return (float)rand() / RAND_MAX * 2.0f - 1.0f;
 }
 
-void update_particles(Particle* particles, int start_a, int end_a, int start_b, int end_b) {
+inline void pair_interaction(Particle *pa, Particle *pb) {
+    float dx = pa->position[0] - pb->position[0];
+    float dy = pa->position[1] - pb->position[1];
+    float dsq = dx * dx + dy * dy;
+    float d = sqrt(dsq);
+    //float dm = d * d * d + 0.01;
+    float dm = exp(250.0 * d);
+    float fx = dx / dm;
+    float fy = dy / dm;
+    float mag = 5.5;
+
+    pa->velocity[0] += fx * mag;
+    pa->velocity[1] += fy * mag;
+
+    pb->velocity[0] -= fx * mag;
+    pb->velocity[1] -= fy * mag;
+}
+
+void update_particles(Particle *particles, int start_a, int end_a, int start_b, int end_b) {
 
     for (int i = start_a; i < end_a; i++) {
         for (int j = start_b; j < end_b; j++) {
-            float dx = particles[i].position[0] - particles[j].position[0];
-            float dy = particles[i].position[1] - particles[j].position[1];
-            float dsq = dx * dx + dy * dy;
-            float d = sqrt(dsq);
-            //float dm = d * d * d + 0.01;
-            float dm = exp(250.0 * d);
-            float fx = dx / dm;
-            float fy = dy / dm;
-            float mag = 5.5;
-
-            particles[i].velocity[0] += fx * mag;
-            particles[i].velocity[1] += fy * mag;
-
-            particles[j].velocity[0] -= fx * mag;
-            particles[j].velocity[1] -= fy * mag;
+            pair_interaction(particles+i, particles+j);
         }
     }
 }
@@ -74,21 +78,7 @@ void update_particles_self(Particle* particles, int start, int end) {
 
     for (int i = start; i < end - 1; i++) {
         for (int j = i + 1; j < end; j++) {
-            float dx = particles[i].position[0] - particles[j].position[0];
-            float dy = particles[i].position[1] - particles[j].position[1];
-            float dsq = dx * dx + dy * dy;
-            float d = sqrt(dsq);
-            //float dm = d * d * d + 0.01;
-            float dm = exp(250.0 * d);
-            float fx = dx / dm;
-            float fy = dy / dm;
-            float mag = 5.5;
-
-            particles[i].velocity[0] += fx * mag;
-            particles[i].velocity[1] += fy * mag;
-
-            particles[j].velocity[0] -= fx * mag;
-            particles[j].velocity[1] -= fy * mag;
+            pair_interaction(particles+i, particles+j);
         }
     }
 }
