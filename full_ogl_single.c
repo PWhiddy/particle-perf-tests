@@ -391,7 +391,7 @@ int main() {
             printf("Update Particles (Binned): %f ms\n", 1000.0 * update_binned_time / frame_count);
             printf("Update Particles (Element-wise): %f ms\n", 1000.0 * update_elementwise_time / frame_count);
             printf("total sim time: %f ms\n", 1000.0 * (clear_bins_time + swap_time + 
-                sort_bins_time + update_binned_time + update_elementwise_time) / frame_count);
+                sort_bins_time + update_bins_time + update_binned_time + update_elementwise_time) / frame_count);
             printf("Render: %f ms\n", 1000.0 * render_time / frame_count);
             printf("-----------------------------\n");
 
